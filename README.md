@@ -14,23 +14,17 @@ Avoid requires native Forge Krea 2, CFG 1 (including the hires pass), and no ima
 
 ## Changes
 
-- Reference and candidate text-fusion passes have independent input storage.
-- Zero correction skips unnecessary candidate passes.
-- Rebalance and legacy V-Flip share one final correction budget and energy limit.
-- Invalid candidate tokens fall back to reference tokens; a nonfinite baseline stops generation with an explanation.
-- Avoid encodes a separate concept span and negates only that span's attention values in text refiners and main transformer blocks. Encoder-layer attention remains untouched. All temporary hooks are removed after each model call, including exceptions.
-- Optional LoRA loading now uses Forge's model patcher directly and reports how many patches it registered. The control is for diffusion-model adapters, including TextFusion. Put text-encoder LoRAs in Forge prompt tags instead.
-- Matching prompt-managed LoRAs take priority and are reported as managed by Forge; no unsupported claim of successful patch application is made for that case.
-- Unsupported files and ambiguous duplicate adapter names are rejected. Exact names and registered aliases are supported across configured LoRA directories.
-- Optional single-entry text-fusion cache is scoped to the sampling pass. It compares actual input values and bypasses custom hooks, wrappers, masks, and unknown attention options. It costs memory and an equality check; benchmark before keeping it enabled.
-- Repeated sampling hooks replace the extension's prior wrapper. Cleanup restores the incoming model patcher.
+- Reference and candidate text-fusion passes use independent input storage; zero correction skips unnecessary passes.
+- Rebalance and legacy V-Flip share one final correction budget and energy limit; invalid candidate tokens fall back to reference tokens.
+- Selective Avoid negates only the avoided concept span's attention values; all temporary hooks are removed after each model call.
+- Optional LoRA loading uses Forge's model patcher directly and reports how many patches registered; prompt-managed LoRAs take priority.
+- Ambiguous or unsupported adapter files are rejected across configured LoRA directories.
+- Optional single-entry text-fusion cache is scoped to the sampling pass and bypasses custom hooks and unknown attention options.
 - Metadata records version, settings, adapter status, Avoid status, fusion-pass count, cache hits, and recovered candidate-token count.
 
 ## Simple controls
 
-Gentle, Balanced, and Strong change rebalance settings only. Reset restores the panel's defaults, empties Avoid, and disables caching and legacy V-Flip. It leaves the master switch unchanged. Advanced retains existing power modes and legacy layer weights for compatibility; larger numbers are not guaranteed to improve results.
-
-The original eleven script arguments stay in the same order. New trailing arguments are `avoid_text` (empty string by default) and `use_cache` (false by default).
+Gentle, Balanced, and Strong change rebalance settings only. Reset restores the panel's defaults, empties Avoid, and disables caching and legacy V-Flip. Advanced retains the existing power modes and legacy layer weights for compatibility.
 
 ## Validation and limits
 
