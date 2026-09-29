@@ -61,9 +61,6 @@ Special thanks to:
 - [r/SECourses](https://www.reddit.com/r/SECourses/) — community discussion and testing
 - [r/malcolmrey](https://www.reddit.com/r/malcolmrey/) — community discussion and testing
 - [**Haoming02 / sd-webui-forge-classic (neo branch)**](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo) — the Forge Neo tree this extension targets
-- [**Adeliox**](https://github.com/Adeliox) — original Klein Head Swap
-- [Alissonerdx](https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap) — BFS (Best Face Swap) workflow and LoRAs
-- [PozzettiAndrea / ComfyUI-SAM3](https://github.com/PozzettiAndrea/ComfyUI-SAM3) and [Meta SAM3](https://github.com/facebookresearch/sam3) — segmentation workflow inspiration and optional upstream mask model
 - [**ComfyUI**](https://github.com/comfyanonymous/ComfyUI) — reference for upstream sampler/scheduler coverage
 - The Forge / AUTOMATIC1111 community — for the extension ecosystem this plugs into
 - Project Invisible extensions — memory policy, GPU compatibility and extension philosophy
