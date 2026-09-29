@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 200" role="img" aria-labelledby="title desc" font-family="Segoe UI,Arial,sans-serif">
+<title id="title">Krea2 Rebalance — banner</title>
+<desc id="desc">Banner: prompt control for Krea 2 in Forge Neo — txtfusion enhancer, refusal LoRA, selective Avoid and step gating, all in one panel.</desc>
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#0d1117"/>
+    <stop offset="1" stop-color="#1a1128"/>
+  </linearGradient>
+  <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#a371f7"/>
+    <stop offset="1" stop-color="#58a6ff"/>
+  </linearGradient>
+</defs>
+<rect width="960" height="200" rx="12" fill="url(#bg)" stroke="#30363d"/>
+<rect x="0" y="0" width="960" height="4" rx="2" fill="url(#accent)"/>
+<text x="40" y="64" font-size="34" font-weight="700" fill="#e6edf3">Krea2 Rebalance</text>
+<text x="40" y="94" font-size="15" fill="#8b949e">Prompt control for Krea 2 models in Forge Neo — one collapsed panel</text>
+<text x="40" y="122" font-size="13" fill="#a371f7">Txtfusion enhancer</text>
+<text x="200" y="122" font-size="13" fill="#8b949e">· refusal LoRA · selective Avoid · legacy V-Flip</text>
+<text x="40" y="148" font-size="13" fill="#58a6ff">Correction-limited by design</text>
+<text x="260" y="148" font-size="13" fill="#8b949e">— no washed-out drift, no core edits, delete folder = stock Forge</text>
+<g>
+  <rect x="640" y="52" width="280" height="112" rx="10" fill="#161b22" stroke="#30363d"/>
+  <text x="780" y="82" text-anchor="middle" font-size="13" fill="#e6edf3" font-weight="600">Krea 2 models only</text>
+  <text x="780" y="106" text-anchor="middle" font-size="12" fill="#8b949e">auto-detected from the checkpoint</text>
+  <text x="780" y="130" text-anchor="middle" font-size="12" fill="#8b949e">presets tune control · LoRA stays yours</text>
+  <text x="780" y="152" text-anchor="middle" font-size="12" fill="#3fb950">✓ independent community extension</text>
+</g>
+</svg>

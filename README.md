@@ -1,6 +1,10 @@
 # Krea2 Rebalance 2.0
 
+![Krea2 Rebalance — prompt control for Krea 2 in Forge Neo](docs/img/hero.svg)
+
 Prompt controls for native Krea 2 in Forge. Restart Forge after updating.
+
+![How the extension works — pipeline and safeguards](docs/img/overview.svg)
 
 ## Start here
 
