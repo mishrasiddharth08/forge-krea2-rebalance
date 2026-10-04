@@ -24,9 +24,8 @@ KREA2_CHUNK_COUNT = 24
 KREA2_CHUNK_DIM = 1280
 
 ENHANCER_PROFILE_12 = (1.0, 1.0, 1.0, 1.0, 1.0, 1.3, 2.0, 4.0, 6.0, 1.5, 5.0, 1.3)
-ENHANCER_CHUNK_PROFILE = ENHANCER_PROFILE_12 + ENHANCER_PROFILE_12
-ENHANCER_GLOBAL_MULTIPLIER = 22.0
-TXTFUSION_TOKEN_REL_CAP = 0.25  # keep the directional correction a trim, not a takeover
+ENHANCER_CHUNK_PROFILE = tuple(gain for gain in ENHANCER_PROFILE_12 for _ in range(2))
+TXTFUSION_TOKEN_REL_CAP = 0.05  # conservative tested default
 TXTFUSION_TOKEN_HARD_CAP = 0.5  # old presets/infotext cannot restore the unsafe 1.0-3.0 range
 
 # Power modes: extra multiplicative headroom stacked on top of the Strength slider
@@ -109,7 +108,7 @@ def _parse_floats(text: Any) -> Any:
 
 
 PATCH_LOCK = threading.RLock()
-VERSION = "2.0.1"
+VERSION = "2.0.2"
 
 
 def _rms(value):
@@ -148,8 +147,7 @@ def _enhanced_txtfusion_forward(txtfusion, x, mask=None, transformer_options=Non
     if strength > 0:
         b, seq, _, _ = x.shape
         gains = _chunk_gains(x.device, torch.float32, strength, power)
-        scale = 1 + strength * power * (ENHANCER_GLOBAL_MULTIPLIER - 1)
-        scaled = (x.float().reshape(b, seq, 24, 1280) * gains.view(1, 1, 24, 1) * scale).reshape_as(x)
+        scaled = (x.float().reshape(b, seq, 24, 1280) * gains.view(1, 1, 24, 1)).reshape_as(x)
         candidate = run(scaled.to(x.dtype)).float()
         stats["invalid_tokens"] = stats.get("invalid_tokens", 0) + (~torch.isfinite(candidate).all(dim=-1)).sum().detach()
         delta = _limit_delta(candidate - reference, reference, token_cap)
@@ -416,16 +414,16 @@ class Krea2RebalanceScript(scripts.ScriptBuiltinUI):
                 balanced = gr.Button("Balanced", variant="primary", size="sm")
                 strong = gr.Button("Strong", size="sm")
                 reset = gr.Button("Reset", size="sm")
-            strength = gr.Slider(0.0, 3.0, value=1.0, step=0.05,
-                                 label="Prompt strength", info="Start at 1.0. Lower it if details distort.")
+            strength = gr.Slider(0.0, 3.0, value=0.15, step=0.05,
+                                 label="Prompt strength", info="Start at 0.15. Raise it gradually if needed.")
             avoid_text = gr.Textbox(interactive=True, label="Avoid (optional)", placeholder="e.g. stripes, lettering, red background",
                                     info="Experimental selective concept suppression. Plain text; CFG 1, no reference images.")
-            summary = gr.Markdown("**Control level: 1.00×** · Correction limit: 0.25", elem_classes=["krea2-summary"])
+            summary = gr.Markdown("**Control level: 0.15×** · Correction limit: 0.05", elem_classes=["krea2-summary"])
 
             with gr.Accordion("Optional LoRA", open=False):
-                enable_refusal = gr.Checkbox(label="Apply LoRA", value=True,
+                enable_refusal = gr.Checkbox(label="Apply LoRA", value=False,
                                              info="Diffusion-model adapter, including TextFusion. Use Forge prompt tags for text-encoder LoRAs.")
-                with gr.Column(visible=True) as lora_controls:
+                with gr.Column(visible=False) as lora_controls:
                     lora_name = gr.Textbox(label="LoRA name", value=DEFAULT_REFUSAL_LORA,
                                            info="Exact filename or registered alias. A matching Forge prompt adapter takes priority.")
                     refusal_strength = gr.Slider(0.0, 2.0, value=DEFAULT_REFUSAL_STRENGTH,
@@ -464,14 +462,14 @@ class Krea2RebalanceScript(scripts.ScriptBuiltinUI):
                     return "Found: <code>" + html.escape(os.path.basename(found)) + "</code>. Available. Patch registration is checked during generation."
                 return "LoRA not found. Check its filename and your configured LoRA folder."
 
-            for button, values in ((gentle, (0.65, "Standard", 0.15)),
-                                   (balanced, (1.0, "Standard", 0.25)),
-                                   (strong, (1.2, "High", 0.35))):
+            for button, values in ((gentle, (0.15, "Standard", 0.05)),
+                                   (balanced, (0.35, "Standard", 0.10)),
+                                   (strong, (0.65, "Standard", 0.15))):
                 button.click(lambda v=values: (*v, describe(*v)), inputs=[],
                              outputs=[strength, power_mode, token_cap, summary], queue=False)
-            reset.click(lambda: (1.0, "Standard", TXTFUSION_TOKEN_REL_CAP, True, DEFAULT_REFUSAL_LORA, 1.0,
+            reset.click(lambda: (0.15, "Standard", TXTFUSION_TOKEN_REL_CAP, False, DEFAULT_REFUSAL_LORA, 1.0,
                                   False, NEGPIP_WEIGHTS_DEFAULT, 1.0, NEGPIP_TOKEN_CAP,
-                                  describe(1.0, "Standard", TXTFUSION_TOKEN_REL_CAP), gr.update(visible=True), gr.update(visible=False), "", False,
+                                  describe(0.15, "Standard", TXTFUSION_TOKEN_REL_CAP), gr.update(visible=False), gr.update(visible=False), "", False,
                                   "Check that your adapter is available before generating."), inputs=[],
                         outputs=[strength, power_mode, token_cap, enable_refusal, lora_name, refusal_strength,
                                  enable_negpip, negpip_weights, negpip_strength, negpip_cap, summary,

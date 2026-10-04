@@ -71,6 +71,18 @@ class Tests(unittest.TestCase):
         f=Fusion();x=torch.randn(1,3,12,2560);expected=f(x.clone());f.calls=0
         result=m._enhanced_txtfusion_forward(f,x,strength=0,original_forward=f.forward)
         self.assertTrue(torch.equal(result,expected));self.assertEqual(f.calls,1)
+    def test_each_layer_uses_one_gain_for_both_1280_halves(self):
+        gains=m._chunk_gains(torch.device('cpu'),torch.float32,1).reshape(12,2)
+        self.assertTrue(torch.equal(gains[:,0],gains[:,1]))
+        self.assertTrue(torch.equal(gains[:,0],torch.tensor(m.ENHANCER_PROFILE_12)))
+    def test_low_strength_changes_smoothly_without_early_saturation(self):
+        f=Fusion();x=torch.randn(1,3,12,2560);ref=f(x.clone()).float();ratios=[]
+        for strength in (.01,.05,.1):
+            out=m._enhanced_txtfusion_forward(f,x,strength=strength,token_cap=.25,original_forward=f.forward).float()
+            ratios.append(float((m._rms(out-ref)/m._rms(ref)).mean()))
+        self.assertLess(ratios[0],ratios[1]);self.assertLess(ratios[1],ratios[2])
+        self.assertLess(ratios[1],.1)
+        self.assertGreater(ratios[2]-ratios[1],.5*(ratios[1]-ratios[0]))
     def test_noncontiguous(self):
         f=Fusion();x=torch.randn(1,3,2560,12).transpose(-1,-2);old=x.clone()
         result=m._enhanced_txtfusion_forward(f,x,original_forward=f.forward)
@@ -141,13 +153,16 @@ class Tests(unittest.TestCase):
     def test_ui_and_reset_callback(self):
         with gr.Blocks() as demo:controls=m.Krea2RebalanceScript().ui()
         self.assertEqual(len(controls),15)
+        self.assertFalse(controls[1].value)
+        self.assertEqual(controls[3].value,.15)
+        self.assertEqual(controls[6].value,.05)
         self.assertEqual(controls[6].maximum,m.TXTFUSION_TOKEN_HARD_CAP)
         self.assertFalse(controls[-2].value)
         self.assertEqual(controls[-1].value,.35)
         reset=next(fn for fn in demo.fns.values() if len(fn.outputs)==16)
-        values=reset.fn();self.assertEqual(len(values),len(reset.outputs));self.assertEqual(values[2],.25);self.assertEqual(values[13],'');self.assertFalse(values[14])
-        preset_caps=sorted(fn.fn()[2] for fn in demo.fns.values() if len(fn.outputs)==4 and not fn.inputs)
-        self.assertEqual(preset_caps,[.15,.25,.35])
+        values=reset.fn();self.assertEqual(len(values),len(reset.outputs));self.assertEqual(values[0],.15);self.assertEqual(values[2],.05);self.assertFalse(values[3]);self.assertFalse(values[11]['visible']);self.assertEqual(values[13],'');self.assertFalse(values[14])
+        presets=sorted((fn.fn()[0],fn.fn()[2]) for fn in demo.fns.values() if len(fn.outputs)==4 and not fn.inputs)
+        self.assertEqual(presets,[(.15,.05),(.35,.1),(.65,.15)])
 
     def test_old_cap_is_safely_clamped_and_recorded(self):
         base=Patcher();p=types.SimpleNamespace(sd_model=types.SimpleNamespace(forge_objects=types.SimpleNamespace(unet=base)),extra_generation_params={})

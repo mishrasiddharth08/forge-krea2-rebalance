@@ -1,4 +1,4 @@
-# Krea2 Rebalance 2.0.1
+# Krea2 Rebalance 2.0.2
 
 ![Krea2 Rebalance — prompt control for Krea 2 in Forge Neo](docs/img/hero.svg)
 
@@ -12,11 +12,27 @@ After updating, restart Forge and click **Reset**, then enable the panel and beg
 
 Avoid requires native Forge Krea 2, CFG 1 (including the hires pass), and no image/reference conditioning or conflicting model/attention hooks. Unsupported combinations produce a visible warning and metadata status; rebalance remains available. Avoid supports up to 128 tokens. It does not parse weighting syntax or prompt schedules. Leave it empty to disable it.
 
+## Halo troubleshooting: live comparison
+
+A same-seed live comparison on October 4 used seed 2920429384 with the same Krea2 Turbo INT8 checkpoint, Wan BF16 VAE, Qwen text encoder, 8 steps, iPNDM, and SGM Uniform. With Rebalance off, the character LoRA at 1.0 still produced bright metallic glints and smearing; removing that LoRA looked cleaner. Lowering its prompt weight to 0.5 substantially reduced these artifacts. This isolates the character adapter as a contributor independent of this extension; appearance and likeness can change at lower weight.
+
+Start with the character LoRA around 0.5 and both Rebalance and the optional TextFusion LoRA off. If you need rebalance, try Prompt strength 0.15, Standard, Correction limit 0.05, with the optional LoRA off. These are conservative troubleshooting settings, not guaranteed values for every adapter or prompt. A final-image blur or contrast filter does not repair distorted model conditioning.
+
+Version 2.0.2 also corrects two extension numerical issues below. It passed automated tests and completed live generation with version 2.0.2 recorded in saved metadata. Halos remained with aggressive rebalance settings, so this release is not claimed to eliminate every artifact. The existing 15 script arguments remain compatible. A final live output at strength 0.15 / limit 0.05 with the character LoRA at 0.5 looked substantially cleaner than the original high-strength output; universal halo removal is not claimed.
+
+## October 4, 2026: text-fusion correction
+
+The first correction-limit fix did not resolve reported halos. Version 2.0.2 removes the 22x global text-input amplification and gives both halves of each native 2560-feature text layer the same weight. The old layout assigned different layer weights to each half. The final correction and energy bounds remain in place.
+
+The optional TextFusion LoRA now defaults to off, including Reset. Enable it explicitly only after comparing it separately: changing learned weights can affect appearance independently of rebalance. Restart Forge and click Reset after updating; existing browser settings may retain the old enabled state.
+
+Reference: [Forge Neo native Krea implementation](https://github.com/Haoming02/sd-webui-forge-classic/blob/neo/backend/nn/krea.py). The extension remains isolated; Forge core is unchanged. Different seeds and automated tensor tests cannot prove universal visual quality.
+
 ## October 4, 2026: correction-limit fix
 
 Balanced and Reset previously restored a correction limit of 1.0, overriding the safer 0.25 default. Strong restored 1.3. This allowed aggressive text-conditioning changes and could produce harsh contrast or washed-out detail even when the panel appeared balanced.
 
-Gentle now uses 0.15, Balanced and Reset use 0.25, and Strong uses 0.35. The runtime caps correction at 0.50, including old saved settings; metadata records the requested and effective values. The summary and slider now agree.
+The final quality defaults use Prompt strength 0.15 and Correction limit 0.05. Gentle uses these defaults; Balanced uses strength 0.35 / limit 0.10, and Strong uses strength 0.65 / limit 0.15. The runtime caps correction at 0.50, including old saved settings; metadata records the requested and effective values. The summary and slider now agree. The final defaults were lowered further after the live halo comparison.
 
 For a clean comparison, keep the same seed, prompt, checkpoint, LoRAs, steps, and sampler. Compare Rebalance off with Balanced at 0.25. If the appearance is still wrong, test the optional LoRA separately and reduce the character LoRA strength. At CFG 1, ordinary negative prompts are ignored by Forge; the optional Avoid field is a separate experimental feature.
 
