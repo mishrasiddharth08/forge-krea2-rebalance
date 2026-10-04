@@ -26,10 +26,8 @@ KREA2_CHUNK_DIM = 1280
 ENHANCER_PROFILE_12 = (1.0, 1.0, 1.0, 1.0, 1.0, 1.3, 2.0, 4.0, 6.0, 1.5, 5.0, 1.3)
 ENHANCER_CHUNK_PROFILE = ENHANCER_PROFILE_12 + ENHANCER_PROFILE_12
 ENHANCER_GLOBAL_MULTIPLIER = 22.0
-TXTFUSION_TOKEN_REL_CAP = 0.25  # default brake — user-adjustable via "Adherence Cap".
-# 1.0 allowed the correction to reach the full RMS of the reference embedding,
-# which effectively doubled text-conditioning energy and produced washed-out,
-# white-halo images. 0.25 keeps the enhancer as a trim, not a takeover.
+TXTFUSION_TOKEN_REL_CAP = 0.25  # keep the directional correction a trim, not a takeover
+TXTFUSION_TOKEN_HARD_CAP = 0.5  # old presets/infotext cannot restore the unsafe 1.0-3.0 range
 
 # Power modes: extra multiplicative headroom stacked on top of the Strength slider
 ENHANCER_POWER_MODES = ["Standard", "High", "Extreme", "MAX"]
@@ -47,6 +45,14 @@ DEFAULT_REFUSAL_STRENGTH = 1.0
 # NegPiP-style v-flip defaults
 NEGPIP_WEIGHTS_DEFAULT = "0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2"
 NEGPIP_TOKEN_CAP = 1.2
+
+# Targeted refusal knobs (ported from AzKrea2GatedRebalance). Krea 2's safety
+# filter lives in tapped projector layers 9/10 (primary) and 11 (secondary);
+# layers 1-8 and 12 are style/anatomy priors and are left untouched in knob
+# mode. Layer L (1-indexed) occupies chunk indices 2*(L-1) and 2*(L-1)+1 in
+# the 24x1280 txtfusion stack.
+KNOB_CHUNKS = {9: (16, 17), 10: (18, 19), 11: (20, 21)}
+KNOB_DEFAULTS = {9: 0.4883, 10: 0.1094, 11: 0.0}  # FB2 deltas: -0.5117 / -0.8906
 
 
 def _is_krea2_dm(dm: Any) -> bool:
@@ -103,7 +109,7 @@ def _parse_floats(text: Any) -> Any:
 
 
 PATCH_LOCK = threading.RLock()
-VERSION = "2.0"
+VERSION = "2.0.1"
 
 
 def _rms(value):
@@ -120,7 +126,8 @@ def _limit_delta(delta, reference, cap):
 
 def _enhanced_txtfusion_forward(txtfusion, x, mask=None, transformer_options=None,
                                 strength=1.0, power=1.0, token_cap=TXTFUSION_TOKEN_REL_CAP,
-                                negpip=None, original_forward=None, stats=None):
+                                negpip=None, original_forward=None, stats=None,
+                                knob_map=None):
     original = original_forward or txtfusion._krea2_rebalance_original_forward
     options = transformer_options or {}
     stats = stats if stats is not None else {}
@@ -413,7 +420,7 @@ class Krea2RebalanceScript(scripts.ScriptBuiltinUI):
                                  label="Prompt strength", info="Start at 1.0. Lower it if details distort.")
             avoid_text = gr.Textbox(interactive=True, label="Avoid (optional)", placeholder="e.g. stripes, lettering, red background",
                                     info="Experimental selective concept suppression. Plain text; CFG 1, no reference images.")
-            summary = gr.Markdown("**Control level: 1.00×** · Correction limit: 1.00", elem_classes=["krea2-summary"])
+            summary = gr.Markdown("**Control level: 1.00×** · Correction limit: 0.25", elem_classes=["krea2-summary"])
 
             with gr.Accordion("Optional LoRA", open=False):
                 enable_refusal = gr.Checkbox(label="Apply LoRA", value=True,
@@ -432,7 +439,7 @@ class Krea2RebalanceScript(scripts.ScriptBuiltinUI):
                 with gr.Row():
                     power_mode = gr.Dropdown(choices=ENHANCER_POWER_MODES, value="Standard",
                                              label="Power multiplier", info="Standard 1× · High 1.5× · Extreme 2.25× · MAX 3×")
-                    token_cap = gr.Slider(0.05, 3.0, value=TXTFUSION_TOKEN_REL_CAP, step=0.05,
+                    token_cap = gr.Slider(0.05, TXTFUSION_TOKEN_HARD_CAP, value=TXTFUSION_TOKEN_REL_CAP, step=0.05,
                                           label="Correction limit", info="Lower this first if results wash out or overshoot.")
                 enable_negpip = gr.Checkbox(label="Legacy global V-Flip", value=False,
                                             info="Experimental whole-prompt effect. Prefer the selective Avoid field. Adds processing time.")
@@ -457,14 +464,14 @@ class Krea2RebalanceScript(scripts.ScriptBuiltinUI):
                     return "Found: <code>" + html.escape(os.path.basename(found)) + "</code>. Available. Patch registration is checked during generation."
                 return "LoRA not found. Check its filename and your configured LoRA folder."
 
-            for button, values in ((gentle, (0.65, "Standard", 0.8)),
-                                   (balanced, (1.0, "Standard", 1.0)),
-                                   (strong, (1.2, "High", 1.3))):
+            for button, values in ((gentle, (0.65, "Standard", 0.15)),
+                                   (balanced, (1.0, "Standard", 0.25)),
+                                   (strong, (1.2, "High", 0.35))):
                 button.click(lambda v=values: (*v, describe(*v)), inputs=[],
                              outputs=[strength, power_mode, token_cap, summary], queue=False)
-            reset.click(lambda: (1.0, "Standard", 1.0, True, DEFAULT_REFUSAL_LORA, 1.0,
+            reset.click(lambda: (1.0, "Standard", TXTFUSION_TOKEN_REL_CAP, True, DEFAULT_REFUSAL_LORA, 1.0,
                                   False, NEGPIP_WEIGHTS_DEFAULT, 1.0, NEGPIP_TOKEN_CAP,
-                                  describe(1.0, "Standard", 1.0), gr.update(visible=True), gr.update(visible=False), "", False,
+                                  describe(1.0, "Standard", TXTFUSION_TOKEN_REL_CAP), gr.update(visible=True), gr.update(visible=False), "", False,
                                   "Check that your adapter is available before generating."), inputs=[],
                         outputs=[strength, power_mode, token_cap, enable_refusal, lora_name, refusal_strength,
                                  enable_negpip, negpip_weights, negpip_strength, negpip_cap, summary,
@@ -538,7 +545,10 @@ class Krea2RebalanceScript(scripts.ScriptBuiltinUI):
             gr.Warning("Krea2 Rebalance skipped: this is not a supported Krea 2 model.")
             return
         strength = _bounded_float(strength, 1, 0, 3)
-        token_cap = _bounded_float(token_cap, TXTFUSION_TOKEN_REL_CAP, 0.05, 3)
+        requested_token_cap = _bounded_float(token_cap, TXTFUSION_TOKEN_REL_CAP, 0.05, 3)
+        token_cap = min(requested_token_cap, TXTFUSION_TOKEN_HARD_CAP)
+        if requested_token_cap > TXTFUSION_TOKEN_HARD_CAP:
+            gr.Warning(f"Krea2 correction limit reduced from {requested_token_cap:.2f} to the safe maximum {token_cap:.2f}.")
         refusal_strength = _bounded_float(refusal_strength, 1, 0, 2)
         power_mode = power_mode if power_mode in ENHANCER_POWER_MULTIPLIERS else "Standard"
         meta = p.extra_generation_params
@@ -600,7 +610,9 @@ class Krea2RebalanceScript(scripts.ScriptBuiltinUI):
         p._krea2_output_unet = unet
         meta.update({"Krea2 Rebalance": True, "Krea2 Version": VERSION,
                      "Krea2 Rebalance Strength": strength, "Krea2 Rebalance Power Mode": power_mode,
-                     "Krea2 Rebalance Adherence Cap": token_cap, "Krea2 Refusal LoRA": bool(enable_refusal),
+                     "Krea2 Rebalance Adherence Cap": token_cap,
+                     "Krea2 Rebalance Requested Adherence Cap": requested_token_cap,
+                     "Krea2 Refusal LoRA": bool(enable_refusal),
                      "Krea2 Refusal LoRA Strength": refusal_strength, "Krea2 NegPiP": bool(negpip_cfg),
                      "Krea2 Avoid": text, "Krea2 Cache": bool(use_cache)})
         if negpip_cfg:

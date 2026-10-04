@@ -1,4 +1,4 @@
-# Krea2 Rebalance 2.0
+# Krea2 Rebalance 2.0.1
 
 ![Krea2 Rebalance — prompt control for Krea 2 in Forge Neo](docs/img/hero.svg)
 
@@ -8,9 +8,19 @@ Prompt controls for native Krea 2 in Forge. Restart Forge after updating.
 
 ## Start here
 
-Enable the panel and begin with Balanced. Use Prompt strength to adjust the rebalance. The optional Avoid field accepts plain concepts such as `stripes, lettering, red background`. It is an experimental selective negative-attention path, not a guarantee that a concept disappears.
+After updating, restart Forge and click **Reset**, then enable the panel and begin with Balanced. Use Prompt strength to adjust the rebalance. The optional Avoid field accepts plain concepts such as `stripes, lettering, red background`. It is an experimental selective negative-attention path, not a guarantee that a concept disappears.
 
 Avoid requires native Forge Krea 2, CFG 1 (including the hires pass), and no image/reference conditioning or conflicting model/attention hooks. Unsupported combinations produce a visible warning and metadata status; rebalance remains available. Avoid supports up to 128 tokens. It does not parse weighting syntax or prompt schedules. Leave it empty to disable it.
+
+## October 4, 2026: correction-limit fix
+
+Balanced and Reset previously restored a correction limit of 1.0, overriding the safer 0.25 default. Strong restored 1.3. This allowed aggressive text-conditioning changes and could produce harsh contrast or washed-out detail even when the panel appeared balanced.
+
+Gentle now uses 0.15, Balanced and Reset use 0.25, and Strong uses 0.35. The runtime caps correction at 0.50, including old saved settings; metadata records the requested and effective values. The summary and slider now agree.
+
+For a clean comparison, keep the same seed, prompt, checkpoint, LoRAs, steps, and sampler. Compare Rebalance off with Balanced at 0.25. If the appearance is still wrong, test the optional LoRA separately and reduce the character LoRA strength. At CFG 1, ordinary negative prompts are ignored by Forge; the optional Avoid field is a separate experimental feature.
+
+The October 4 saved images confirmed cap 1.0 was in use. Different seeds prevent those images from proving that this setting caused every appearance issue. Automated tests check the correction limits and controls; corrected real-model images still need visual verification.
 
 ## Changes
 
@@ -28,7 +38,7 @@ Gentle, Balanced, and Strong change rebalance settings only. Reset restores the 
 
 ## Validation and limits
 
-The included `tests/test_krea2.py` runs 26 focused tests using Torch fixtures and the installed Gradio. Tests cover input ownership, correction bounds, cache invalidation, hook restoration, batch expansion, encoder token boundaries, LoRA registration status, sampling cleanup, and UI callbacks. `tests/gpu_check.py` checks FP16/BF16 tensor behavior on CUDA. These are not real-checkpoint image-quality benchmarks.
+The included `tests/test_krea2.py` runs focused tests using Torch fixtures and the installed Gradio. Tests cover input ownership, correction bounds, cache invalidation, hook restoration, batch expansion, encoder token boundaries, LoRA registration status, sampling cleanup, and UI callbacks. `tests/gpu_check.py` checks FP16/BF16 tensor behavior on CUDA. These are not real-checkpoint image-quality benchmarks.
 
 Real Krea 2 generation quality, selective-suppression effectiveness, adapter efficacy, and full-model speedups still require paired-seed image tests. Caching and Avoid are experimental. NAG and adaptive schedules are not implemented in this version.
 

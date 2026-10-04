@@ -9,18 +9,8 @@ import numpy as np
 from PIL import Image
 
 
-modules = types.ModuleType("modules")
-modules.scripts = types.SimpleNamespace(ScriptBuiltinUI=object, AlwaysVisible=True)
-modules.shared = types.SimpleNamespace(cmd_opts=types.SimpleNamespace(lora_dir=None, lora_dirs=[]))
-sys.modules["modules"] = modules
-ui = types.ModuleType("modules.ui_components")
-ui.InputAccordion = object
-sys.modules["modules.ui_components"] = ui
-
-path = Path(__file__).with_name("krea2_rebalance.py")
-spec = importlib.util.spec_from_file_location("krea_moire_test", path)
-m = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(m)
+# Share the Forge fixtures so unittest discovery does not replace module stubs.
+from test_krea2 import m
 
 
 class MoireTests(unittest.TestCase):

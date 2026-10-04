@@ -141,10 +141,21 @@ class Tests(unittest.TestCase):
     def test_ui_and_reset_callback(self):
         with gr.Blocks() as demo:controls=m.Krea2RebalanceScript().ui()
         self.assertEqual(len(controls),15)
+        self.assertEqual(controls[6].maximum,m.TXTFUSION_TOKEN_HARD_CAP)
         self.assertFalse(controls[-2].value)
         self.assertEqual(controls[-1].value,.35)
         reset=next(fn for fn in demo.fns.values() if len(fn.outputs)==16)
-        values=reset.fn();self.assertEqual(len(values),len(reset.outputs));self.assertEqual(values[13],'');self.assertFalse(values[14])
+        values=reset.fn();self.assertEqual(len(values),len(reset.outputs));self.assertEqual(values[2],.25);self.assertEqual(values[13],'');self.assertFalse(values[14])
+        preset_caps=sorted(fn.fn()[2] for fn in demo.fns.values() if len(fn.outputs)==4 and not fn.inputs)
+        self.assertEqual(preset_caps,[.15,.25,.35])
+
+    def test_old_cap_is_safely_clamped_and_recorded(self):
+        base=Patcher();p=types.SimpleNamespace(sd_model=types.SimpleNamespace(forge_objects=types.SimpleNamespace(unet=base)),extra_generation_params={})
+        script=m.Krea2RebalanceScript();script.process_before_every_sampling(p,True,False,'',1,token_cap=1.3)
+        self.assertEqual(p.extra_generation_params['Krea2 Rebalance Requested Adherence Cap'],1.3)
+        self.assertEqual(p.extra_generation_params['Krea2 Rebalance Adherence Cap'],m.TXTFUSION_TOKEN_HARD_CAP)
+        self.assertEqual(p.sd_model.forge_objects.unet.model_options['model_function_wrapper']._krea2_stats,{})
+        script.post_sample(p,None);self.assertIs(p.sd_model.forge_objects.unet,base)
     def test_registered_patch_status(self):
         import tempfile
         with tempfile.TemporaryDirectory() as d:
@@ -157,6 +168,23 @@ class Tests(unittest.TestCase):
             self.assertTrue(status.startswith('Registered 1'))
             nets.load_lora_for_models=lambda u,*a,**k:(u,None)
             _,status=m._apply_adapter(p,Patcher(),'a',1);self.assertTrue(status.startswith('No model'))
+            del sys.modules['networks'];modules.shared.cmd_opts.lora_dir=None
+
+    def test_adapter_does_not_accumulate_between_sampling_passes(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d,'a.safetensors');path.touch();modules.shared.cmd_opts.lora_dir=d
+            nets=types.ModuleType('networks');nets.available_networks={};nets.available_network_aliases={};nets.loaded_networks=[];nets.load_lora_state_dict=lambda p:{'x':torch.ones(1)}
+            def loader(u,c,data,s,t,**kw):
+                result=u.clone();result.patches.setdefault('txtfusion.weight',[]).append((s,'patch'));return result,None
+            nets.load_lora_for_models=loader;sys.modules['networks']=nets
+            base=Patcher();p=types.SimpleNamespace(sd_model=types.SimpleNamespace(forge_objects=types.SimpleNamespace(unet=base)),extra_generation_params={})
+            script=m.Krea2RebalanceScript();script.process(p)
+            script.process_before_every_sampling(p,True,True,'a',1)
+            self.assertEqual(len(p.sd_model.forge_objects.unet.patches['txtfusion.weight']),1)
+            script.process_before_every_sampling(p,True,True,'a',1)
+            self.assertEqual(len(p.sd_model.forge_objects.unet.patches['txtfusion.weight']),1)
+            script.post_sample(p,None);self.assertIs(p.sd_model.forge_objects.unet,base);self.assertFalse(base.patches)
             del sys.modules['networks'];modules.shared.cmd_opts.lora_dir=None
 
     def test_sampling_lifecycle_restores_base(self):
