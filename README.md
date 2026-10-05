@@ -4,7 +4,13 @@
 
 Prompt controls for native Krea 2 in Forge. Restart Forge after updating.
 
-![How the extension works — pipeline and safeguards](docs/img/overview.svg)
+![Choose, adjust, generate — methods and validation](docs/img/overview.svg)
+
+## Current UI
+
+![Krea2 Rebalance 2.1 — aligned bypass checkboxes in Forge Neo](docs/img/ui-2.1.jpg)
+
+Equal-width controls and a compact 2 × 2 checkbox layout. Check one or more methods; keep advanced settings collapsed until needed.
 
 ## Checked bypass methods
 

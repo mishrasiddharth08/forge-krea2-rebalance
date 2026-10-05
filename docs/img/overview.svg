@@ -1,59 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 470" role="img" aria-labelledby="title desc" font-family="Segoe UI,Arial,sans-serif">
-<title id="title">Krea2 Rebalance — how the extension works</title>
-<desc id="desc">Pipeline overview: the prompt passes through the txtfusion enhancer with a correction limit, optional refusal LoRA and selective Avoid, then into sampling with a bounded text-conditioning delta.</desc>
-<defs>
-  <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
-    <stop offset="0" stop-color="#0d1117"/>
-    <stop offset="1" stop-color="#1a1128"/>
-  </linearGradient>
-  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-    <path d="M 0 0 L 10 5 L 0 10 z" fill="#a371f7"/>
-  </marker>
-</defs>
-<rect width="960" height="470" rx="12" fill="url(#bg2)" stroke="#30363d"/>
-<text x="480" y="42" text-anchor="middle" font-size="20" font-weight="700" fill="#e6edf3">How Krea2 Rebalance works</text>
-
-<!-- stage 1 -->
-<rect x="50" y="80" width="200" height="80" rx="10" fill="#161b22" stroke="#30363d"/>
-<text x="150" y="112" text-anchor="middle" font-size="13.5" font-weight="600" fill="#e6edf3">Your prompt</text>
-<text x="150" y="134" text-anchor="middle" font-size="11.5" fill="#8b949e">normal Forge prompt box</text>
-
-<!-- stage 2: txtfusion -->
-<rect x="310" y="70" width="240" height="100" rx="10" fill="#1c2128" stroke="#a371f7"/>
-<text x="430" y="98" text-anchor="middle" font-size="13.5" font-weight="700" fill="#a371f7">Txtfusion enhancer</text>
-<text x="430" y="120" text-anchor="middle" font-size="11.5" fill="#e6edf3">12 tapped Qwen3-VL layers</text>
-<text x="430" y="140" text-anchor="middle" font-size="11.5" fill="#8b949e">preset · power mode · cache</text>
-<line x1="250" y1="120" x2="306" y2="120" stroke="#a371f7" stroke-width="1.6" marker-end="url(#arrow)"/>
-
-<!-- correction limit -->
-<rect x="310" y="190" width="240" height="72" rx="10" fill="#161b22" stroke="#3fb950"/>
-<text x="430" y="218" text-anchor="middle" font-size="13" font-weight="600" fill="#3fb950">Correction limit (cap)</text>
-<text x="430" y="240" text-anchor="middle" font-size="11.5" fill="#8b949e">bounds the delta per token —</text>
-<text x="430" y="256" text-anchor="middle" font-size="11.5" fill="#8b949e">prevents washed-out / halo drift</text>
-<line x1="430" y1="170" x2="430" y2="186" stroke="#a371f7" stroke-width="1.4" marker-end="url(#arrow)"/>
-
-<!-- stage 3: optional adapters -->
-<rect x="620" y="70" width="290" height="100" rx="10" fill="#161b22" stroke="#30363d"/>
-<text x="765" y="98" text-anchor="middle" font-size="13.5" font-weight="600" fill="#58a6ff">Optional add-ons</text>
-<text x="765" y="122" text-anchor="middle" font-size="11.5" fill="#e6edf3">· refusal-reduction LoRA adapter</text>
-<text x="765" y="144" text-anchor="middle" font-size="11.5" fill="#e6edf3">· selective Avoid (concept suppression)</text>
-<text x="765" y="164" text-anchor="middle" font-size="11.5" fill="#8b949e">LoRAs stay on the runtime side path</text>
-<line x1="550" y1="120" x2="616" y2="120" stroke="#a371f7" stroke-width="1.6" marker-end="url(#arrow)"/>
-
-<!-- stage 4: sampling -->
-<rect x="620" y="290" width="290" height="86" rx="10" fill="#161b22" stroke="#d29922"/>
-<text x="765" y="318" text-anchor="middle" font-size="13.5" font-weight="600" fill="#d29922">Krea 2 sampling</text>
-<text x="765" y="340" text-anchor="middle" font-size="11.5" fill="#8b949e">normal Forge Generate · seed · batch</text>
-<text x="765" y="360" text-anchor="middle" font-size="11.5" fill="#8b949e">nonfinite tokens recovered + reported</text>
-<line x1="765" y1="170" x2="765" y2="286" stroke="#a371f7" stroke-width="1.6" marker-end="url(#arrow)"/>
-
-<!-- safeguards box -->
-<rect x="50" y="290" width="500" height="86" rx="10" fill="#161b22" stroke="#30363d"/>
-<text x="70" y="316" font-size="13" font-weight="600" fill="#3fb950">BUILT-IN SAFEGUARDS</text>
-<text x="70" y="340" font-size="11.5" fill="#e6edf3">✓ bounded correction (no takeover of text conditioning)</text>
-<text x="70" y="362" font-size="11.5" fill="#e6edf3">✓ stats reported per run: fusion passes · cache hits · recovered tokens</text>
-
-<!-- bottom note -->
-<text x="480" y="430" text-anchor="middle" font-size="11" fill="#8b949e">Krea 2 models are auto-detected · no Forge core edits · delete the folder to return to stock</text>
-<line x1="550" y1="333" x2="616" y2="333" stroke="#a371f7" stroke-width="1.4" marker-end="url(#arrow)"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title desc" font-family="Segoe UI,Arial,sans-serif">
+<title id="title">Choose, adjust, generate — Krea2 Rebalance 2.1</title>
+<desc id="desc">Enable checked bypasses, select one or more of Fedor, Filter Bypass 2, Filter Bypass 3 and bounded Enhancer, start at strength one, then use native Forge Generate. Higher combined strength may change appearance. Validation: 46 automated tests and 32 native API generations; image quality is not guaranteed.</desc>
+<rect width="960" height="540" rx="24" fill="#101e29"/>
+<text x="40" y="51" fill="#f0f6fa" font-size="28" font-weight="700">Choose. Adjust. Generate.</text>
+<text x="40" y="81" fill="#a9becb" font-size="16">A compact panel that keeps the normal Forge workflow.</text>
+<g fill="#17313b" stroke="#31505b"><rect x="40" y="110" width="280" height="302" rx="16"/><rect x="340" y="110" width="280" height="302" rx="16"/><rect x="640" y="110" width="280" height="302" rx="16"/></g>
+<g fill="#65dccb" font-size="18" font-weight="700"><text x="60" y="146">01 · SELECT</text><text x="360" y="146">02 · FINE-TUNE</text><text x="660" y="146">03 · GENERATE</text></g>
+<g fill="#e0eaf0" font-size="17"><text x="60" y="185">Enable checked bypasses</text><text x="360" y="185">Start with one method</text><text x="360" y="219">Method strength: 1.0</text><text x="360" y="267">Add installed LoRAs</text><text x="360" y="301">by name, when needed</text><text x="660" y="185">Use Forge Generate</text><text x="660" y="219">Save to the normal gallery</text><text x="660" y="267">Settings recorded in PNG</text><text x="660" y="301">Reset clears selections</text></g>
+<g fill="#10252b" stroke="#39c6b4"><rect x="60" y="206" width="240" height="36" rx="8"/><rect x="60" y="250" width="240" height="36" rx="8"/><rect x="60" y="294" width="240" height="36" rx="8"/><rect x="60" y="338" width="240" height="36" rx="8"/></g>
+<g fill="#dbf6f0" font-size="16"><text x="74" y="230">✓ Fedor (layers 9 + 10)</text><text x="74" y="274">✓ Filter Bypass 2</text><text x="74" y="318">✓ Filter Bypass 3</text><text x="74" y="362">✓ Enhancer (bounded)</text></g>
+<text x="360" y="366" fill="#f1ca87" font-size="14">Combined effects can alter appearance.</text>
+<text x="40" y="455" fill="#65dccb" font-size="18" font-weight="700">46 automated tests · 32 native API generations · UI save/gallery check</text>
+<text x="40" y="486" fill="#a9becb" font-size="15">Execution and cleanup verified on Krea2 Turbo INT8 / RTX 5090.</text>
+<text x="40" y="512" fill="#a9becb" font-size="15">These checks do not guarantee bypass effectiveness or halo-free images.</text>
 </svg>
