@@ -152,13 +152,13 @@ class Tests(unittest.TestCase):
         modules.shared.cmd_opts.lora_dir=None
     def test_ui_and_reset_callback(self):
         with gr.Blocks() as demo:controls=m.Krea2RebalanceScript().ui()
-        self.assertEqual(len(controls),15)
+        self.assertEqual(len(controls),18)
         self.assertFalse(controls[1].value)
         self.assertEqual(controls[3].value,.15)
         self.assertEqual(controls[6].value,.05)
         self.assertEqual(controls[6].maximum,m.TXTFUSION_TOKEN_HARD_CAP)
-        self.assertFalse(controls[-2].value)
-        self.assertEqual(controls[-1].value,.35)
+        self.assertFalse(controls[13].value)
+        self.assertEqual(controls[14].value,.35)
         reset=next(fn for fn in demo.fns.values() if len(fn.outputs)==16)
         values=reset.fn();self.assertEqual(len(values),len(reset.outputs));self.assertEqual(values[0],.15);self.assertEqual(values[2],.05);self.assertFalse(values[3]);self.assertFalse(values[11]['visible']);self.assertEqual(values[13],'');self.assertFalse(values[14])
         presets=sorted((fn.fn()[0],fn.fn()[2]) for fn in demo.fns.values() if len(fn.outputs)==4 and not fn.inputs)
@@ -255,5 +255,130 @@ class Tests(unittest.TestCase):
         p=types.SimpleNamespace(sd_model=types.SimpleNamespace(forge_objects=types.SimpleNamespace(unet=base)),extra_generation_params={})
         m.Krea2RebalanceScript().process_before_every_sampling(p,True,False,'',0)
         self.assertNotIn('model_function_wrapper',p.sd_model.forge_objects.unet.model_options)
+
+
+class MethodTests(unittest.TestCase):
+    def setUp(self):
+        self.old_networks = sys.modules.get('networks')
+        self.nets=types.ModuleType('networks'); self.calls=[]
+        def loader(u,c,data,amount,clip,**kw):
+            self.calls.append((data,amount,clip)); out=u.clone()
+            out.patches.setdefault('diffusion_model.txtfusion.projector.weight',[]).append((amount,data))
+            return out,None
+        self.nets.load_lora_for_models=loader;sys.modules['networks']=self.nets
+    def tearDown(self):
+        if self.old_networks is None: sys.modules.pop('networks',None)
+        else: sys.modules['networks']=self.old_networks
+    def processing(self):
+        base=Patcher();base.dm.txtfusion.projector=torch.nn.Linear(12,1,bias=False)
+        return base,types.SimpleNamespace(sd_model=types.SimpleNamespace(forge_objects=types.SimpleNamespace(unet=base)),extra_generation_params={})
+    def invoke(self,p,on,method,amount=1,cap=.05,cache=False):
+        m.Krea2RebalanceScript().process_before_every_sampling(p,True,True,'missing',.15,'Standard',1,cap,
+            True,m.NEGPIP_WEIGHTS_DEFAULT,1,m.NEGPIP_TOKEN_CAP,'',cache,False,.35,on,method,amount)
+    def test_named_multi_lora_dedup_and_legacy_metadata(self):
+        self.assertEqual(m._selected_loras(['a','b','a']),['a','b'])
+        self.assertEqual(m._selected_loras('a | b'),['a','b'])
+        self.assertEqual(m._selected_loras('a'),['a'])
+        self.assertEqual(m._selected_loras(None),[])
+        with gr.Blocks():
+            script=m.Krea2RebalanceScript(); controls=script.ui()
+        field=next(fn for comp,fn in script.infotext_fields if comp is controls[2])
+        self.assertEqual(field({'Krea2 Refusal LoRA Name':'a | b'}),['a','b'])
+        self.assertIsNone(field({}))
+    def test_vectors_and_columns(self):
+        self.assertEqual(len(m.BYPASS_METHODS),4)
+        for method,delta in m.BYPASS_DELTAS.items():
+            self.assertEqual(len(delta),12);self.assertEqual(delta[:8],(0.,)*8);self.assertEqual(delta[-1],0.)
+            self.assertLess(delta[8],0);self.assertLess(delta[9],0)
+        self.assertEqual(m.BYPASS_DELTAS[m.BYPASS_METHODS[0]][10],0.)
+        self.assertEqual(m.BYPASS_DELTAS[m.BYPASS_METHODS[1]][10],0.)
+        self.assertEqual(m.BYPASS_DELTAS[m.BYPASS_METHODS[2]][10],-.609375)
+    def test_each_method_boundaries_cleanup_and_cache(self):
+        for method in m.BYPASS_METHODS:
+            for value,want in [(0,0),(.5,.5),(1,1),(5,5),(99,5),(-1,0),(float('nan'),1),(float('inf'),1),('bad',1)]:
+                for cache in (False,True):
+                    with self.subTest(method=method,value=value,cache=cache):
+                        base,p=self.processing();self.invoke(p,True,method,value,cache=cache)
+                        meta=p.extra_generation_params
+                        self.assertEqual(meta['Krea2 Method Strength'],want)
+                        self.assertFalse(meta['Krea2 NegPiP'])
+                        if method in m.BYPASS_DELTAS:
+                            self.assertEqual(meta['Krea2 Rebalance Strength'],0.)
+                            self.assertNotIn('model_function_wrapper',p.sd_model.forge_objects.unet.model_options)
+                            self.assertEqual(m._patch_count(p.sd_model.forge_objects.unet),int(want>0))
+                        else: self.assertLessEqual(meta['Krea2 Rebalance Strength'],3.)
+                        m.Krea2RebalanceScript().post_sample(p,None)
+                        self.assertIs(p.sd_model.forge_objects.unet,base);self.assertEqual(base.patches,{})
+    def test_selected_strength_cap_power_and_repeated_sampling(self):
+        for method in m.BYPASS_METHODS:
+            for cap in (.05,.5,3,float('nan')):
+                base,p=self.processing();self.invoke(p,True,method,1,cap)
+                self.invoke(p,True,method,1,cap)
+                self.assertLessEqual(m._patch_count(p.sd_model.forge_objects.unet),1)
+                self.assertLessEqual(p.extra_generation_params['Krea2 Rebalance Adherence Cap'],.5)
+                m.Krea2RebalanceScript().post_sample(p,None);self.assertIs(p.sd_model.forge_objects.unet,base)
+    def test_existing_projector_patch_is_not_stacked(self):
+        base,p=self.processing();base.patches['diffusion_model.txtfusion.projector.weight']=[('external',)]
+        self.invoke(p,True,m.BYPASS_METHODS[0]);self.assertIn('Skipped:',p.extra_generation_params['Krea2 Method Status'])
+        self.assertEqual(m._patch_count(p.sd_model.forge_objects.unet),1);self.assertEqual(len(self.calls),0)
+    def test_bad_shape_and_registration_fail_closed(self):
+        base,p=self.processing();base.dm.txtfusion.projector=torch.nn.Linear(10,1,bias=False)
+        self.invoke(p,True,m.BYPASS_METHODS[0]);self.assertIn('Skipped:',p.extra_generation_params['Krea2 Method Status'])
+        self.assertEqual(base.patches,{})
+        base,p=self.processing();self.nets.load_lora_for_models=lambda u,*a,**k:(u,None)
+        self.invoke(p,True,m.BYPASS_METHODS[0]);self.assertIn('Skipped:',p.extra_generation_params['Krea2 Method Status'])
+    def test_unknown_method_and_disabled_selection(self):
+        base,p=self.processing();self.invoke(p,True,'unknown')
+        self.assertEqual(base.patches,{});self.assertEqual(p.extra_generation_params['Krea2 Rebalance Strength'],0.)
+        self.assertIn('Skipped',p.extra_generation_params['Krea2 Method Status'])
+        base,p=self.processing();self.invoke(p,False,m.BYPASS_METHODS[0]);self.assertEqual(base.patches,{})
+        self.assertEqual(p.extra_generation_params['Krea2 Method Status'],'Off')
+    def test_ui_appends_controls_and_reset(self):
+        with gr.Blocks() as demo: controls=m.Krea2RebalanceScript().ui()
+        self.assertEqual(len(controls),18);self.assertFalse(controls[15].value)
+        self.assertEqual(controls[16].value,[]);self.assertEqual(controls[17].value,1)
+        fn=next(fn for fn in demo.fns.values() if len(fn.outputs)==3 and not fn.inputs)
+        self.assertEqual(fn.fn(),(False,[],1.0))
+        self.assertTrue(controls[2].multiselect)
+
+
+    def test_all_combinations_sum_once_and_restore(self):
+        import itertools
+        for count in range(5):
+            for selected in itertools.combinations(m.BYPASS_METHODS,count):
+                for value in (0.,1.,5.):
+                    with self.subTest(selected=selected,strength=value):
+                        base,p=self.processing();before=len(self.calls)
+                        self.invoke(p,True,list(selected),value)
+                        vec=[m.BYPASS_DELTAS[name] for name in selected if name in m.BYPASS_DELTAS]
+                        if vec and value:
+                            self.assertEqual(len(self.calls)-before,1)
+                            data,amount,_=self.calls[-1]
+                            self.assertTrue(torch.equal(data['diffusion_model.txtfusion.projector.diff'],torch.tensor(vec).sum(0,keepdim=True)))
+                            self.assertEqual(amount,value)
+                        else:self.assertEqual(len(self.calls)-before,0)
+                        self.assertLessEqual(m._patch_count(p.sd_model.forge_objects.unet),1)
+                        m.Krea2RebalanceScript().post_sample(p,None);self.assertIs(p.sd_model.forge_objects.unet,base)
+
+
+    def test_real_named_custom_loras_compose_before_bypass(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            modules.shared.cmd_opts.lora_dir=d
+            Path(d,'a.safetensors').touch();Path(d,'b.safetensors').touch()
+            self.nets.available_networks={};self.nets.available_network_aliases={};self.nets.loaded_networks=[]
+            self.nets.load_lora_state_dict=lambda filename:{'character':torch.ones(1)}
+            def loader(u,c,data,amount,clip,**kw):
+                out=u.clone();key='diffusion_model.txtfusion.projector.weight' if 'diffusion_model.txtfusion.projector.diff' in data else 'blocks.image.weight'
+                out.patches.setdefault(key,[]).append((amount,data));return out,None
+            self.nets.load_lora_for_models=loader
+            base,p=self.processing()
+            m.Krea2RebalanceScript().process_before_every_sampling(p,True,True,['a','b','a'],.15,'Standard',.5,.05,
+                False,m.NEGPIP_WEIGHTS_DEFAULT,1,1.2,'',False,False,.35,True,[m.BYPASS_METHODS[0]],1)
+            self.assertEqual(len(p.sd_model.forge_objects.unet.patches['blocks.image.weight']),2)
+            self.assertEqual(len(p.sd_model.forge_objects.unet.patches['diffusion_model.txtfusion.projector.weight']),1)
+            self.assertEqual(p.extra_generation_params['Krea2 Refusal LoRA Name'],'a | b')
+            m.Krea2RebalanceScript().post_sample(p,None);self.assertIs(p.sd_model.forge_objects.unet,base)
+            modules.shared.cmd_opts.lora_dir=None
 
 if __name__=='__main__':unittest.main(verbosity=2)

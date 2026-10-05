@@ -5,3 +5,31 @@
 .krea2-hero p {font-size: 13px; margin: 0; color: var(--body-text-color-subdued);}
 .krea2-summary {padding: 8px 12px !important; border-radius: 8px; background: rgba(20,184,166,.07);}
 .krea2-footnote {opacity: .7; font-size: 12px;}
+
+/* Extension-scoped two-column method controls; native Forge controls are untouched. */
+.krea2-method-options [data-testid="checkbox-group"] {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px !important;
+}
+.krea2-method-options [data-testid="checkbox-group"] > label {
+    width: 100%; box-sizing: border-box; margin: 0 !important;
+    min-height: 40px; padding: 10px 12px !important; border-radius: 9px !important;
+    align-items: center; border: 1px solid var(--border-color-primary) !important;
+}
+.krea2-method-options [data-testid="checkbox-group"] > label.selected {
+    background: rgba(20,184,166,.09) !important; border-color: #14b8a6 !important;
+}
+@media (max-width: 540px) {
+    .krea2-method-options [data-testid="checkbox-group"] { grid-template-columns: 1fr; }
+}
+
+.krea2-presets {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px !important;
+}
+.krea2-presets > button { min-width: 0 !important; width: 100%; margin: 0 !important; }
+@media (max-width: 540px) {
+    .krea2-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

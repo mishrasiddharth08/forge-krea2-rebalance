@@ -1,10 +1,37 @@
-# Krea2 Rebalance 2.0.2
+# Krea2 Rebalance 2.1.0
 
 ![Krea2 Rebalance — prompt control for Krea 2 in Forge Neo](docs/img/hero.svg)
 
 Prompt controls for native Krea 2 in Forge. Restart Forge after updating.
 
 ![How the extension works — pipeline and safeguards](docs/img/overview.svg)
+
+## Checked bypass methods
+
+Open **Krea2 Rebalance**, enable **Enable checked bypasses**, and check one or more named entries. All are off by default. **Method strength** applies to each checked bypass; start at 1.0 with one entry. Multiple entries add their projector deltas, so Fedor plus FB2 roughly doubles their common effect and can change appearance. There is no guarantee against halos, style drift or refusal.
+
+| Checkbox | Integrated behavior |
+|---|---|
+| Fedor (layers 9 + 10) | Adds the published Fedor delta only to projector columns 9 and 10. |
+| Filter Bypass 2 | Uses the FB2 two-column profile reported in the Fedor source. |
+| Filter Bypass 3 | Adds the verified FB3 columns 9, 10 and 11. |
+| Enhancer (bounded) | Uses this extension's corrected, bounded prompt-enhancer port; retains the conservative defaults and omits the old 22x input amplification. |
+
+The projector methods use Forge's native patcher and combine checked deltas into one patch, with the same result as additive diff adapters at equal strength. No model downloads or ComfyUI installation are needed. The native 1 x 12 projector shape is checked. An existing projector adapter causes a visible skip instead of accidental double loading. Legacy global V-Flip is skipped while checked methods are enabled. An unchecked Enhancer does not run the broad enhancer alongside selected projector methods.
+
+**Optional LoRA** retains the collapsed layout and adds a searchable named multi-selection for other installed LoRAs. Its strength applies to every chosen file. Refresh names after adding files. Missing or ambiguous files are reported individually; matching prompt-managed LoRAs are not loaded twice. Do not also select the same bypass in Optional LoRA or Forge prompt tags.
+
+The previous 15 script-argument positions are unchanged; three controls are appended. PNG metadata records checked names, strength, registration status and effective settings. Reset unchecks the methods. The native checkpoint selector, Generate, gallery and API remain in their normal Forge flow.
+
+Sources and credits: [Fedor / CliffNodes](https://github.com/CliffNodes/fedor_bypass), [Fedor model page](https://civitai.com/models/2746817/krea2-filter-bypass-fedor), [uzumix FB3](https://huggingface.co/uzumix/krea2filterbypass3.safetensors), [FB2 community page](https://civitai.red/models/2728234/krea2filterbypass?modelVersionId=3067151), and [capitan01R Enhancer](https://github.com/capitan01R/ComfyUI-Krea2T-Enhancer). The integration is an independent native Forge port of these projector profiles and the bounded enhancer concept. Other ComfyUI nodes in that repository (scheduler, phrase weighting and image-only character loading) are not included. The linked MyAIForce article could not be retrieved during implementation and was not treated as implementation evidence.
+
+## Validation (October 5, 2026)
+
+46 automated tests cover all 16 checkbox combinations, zero/intermediate/maximum strengths, invalid values, shape and patch conflicts, named multi-LoRA loading, old argument positions, metadata parsing, reset, repeated sampling, cleanup, cache and the existing moire filter.
+
+32 native API generations passed on Krea2 Turbo INT8 / RTX 5090 with the Wan BF16 VAE and Qwen text encoder. They covered all combinations, individual strengths 0 / 0.5 / 1 / 5, all methods together at 5, cache and baseline before/after. Baseline pixel hashes matched exactly after all switching, confirming no retained method effect in this run. A further native UI Generate/save/gallery run passed with Fedor + FB3 checked together, Euler / Simple, and correct combined-method metadata. The API matrix used a neutral mug prompt, seed 184775, 512 x 512, 8 steps, CFG 1, iPNDM / SGM Uniform. These are execution and cleanup tests, not proof of refusal suppression or halo-free people across all checkpoints and settings.
+
+Run `python -m unittest discover -s tests -p "test_*.py"` for automated checks. For the live matrix, select a Krea2 checkpoint in Forge, start it with `--api`, then run `python tests/live_methods.py`. It saves case outputs and metadata in a temporary folder, or accepts `--output-dir` and `--url`.
 
 ## Start here
 

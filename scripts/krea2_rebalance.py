@@ -54,6 +54,41 @@ KNOB_CHUNKS = {9: (16, 17), 10: (18, 19), 11: (20, 21)}
 KNOB_DEFAULTS = {9: 0.4883, 10: 0.1094, 11: 0.0}  # FB2 deltas: -0.5117 / -0.8906
 
 
+BYPASS_METHODS = ("Fedor (layers 9 + 10)", "Filter Bypass 2", "Filter Bypass 3", "Enhancer (bounded)")
+# Projector deltas, not activation scaling. Fedor's published values are rounded;
+# FB2/FB3 use the exact representable values in the community adapter tensors.
+BYPASS_DELTAS = {
+    BYPASS_METHODS[0]: (0.,) * 8 + (-0.5117, -0.8906, 0., 0.),
+    BYPASS_METHODS[1]: (0.,) * 8 + (-0.51171875, -0.890625, 0., 0.),
+    BYPASS_METHODS[2]: (0.,) * 8 + (-0.51171875, -0.890625, -0.609375, 0.),
+}
+
+
+def _apply_bypass_methods(unet, methods, amount):
+    if amount <= 0:
+        return unet, "Off (zero strength)"
+    if not any(name in BYPASS_DELTAS for name in methods):
+        return unet, "Off (no projector methods selected)"
+    dm = unet.get_model_object("diffusion_model")
+    projector = getattr(dm.txtfusion, "projector", None)
+    if projector is None or tuple(projector.weight.shape) != (1, 12):
+        raise ValueError("Selected method requires the native 1 x 12 Krea2 projector")
+    if any("txtfusion.projector" in str(key) for key in unet.patches):
+        raise ValueError("Another projector adapter is active; remove it before selecting a bypass method")
+    import networks
+    names = [name for name in methods if name in BYPASS_DELTAS]
+    if not names:
+        return unet, "Off (no projector methods selected)"
+    delta = torch.tensor([BYPASS_DELTAS[name] for name in names], dtype=torch.float32).sum(dim=0, keepdim=True)
+    before = _patch_count(unet)
+    updated, _ = networks.load_lora_for_models(
+        unet, None, {"diffusion_model.txtfusion.projector.diff": delta},
+        amount, 0.0, filename="krea2_builtin_" + "_".join(str(BYPASS_METHODS.index(name)) for name in names), online_mode=False)
+    if _patch_count(updated) - before != 1:
+        raise ValueError("Forge did not register exactly one projector patch")
+    return updated, f"Active: {', '.join(names)} at {amount:.2f} each (one combined projector patch)"
+
+
 def _is_krea2_dm(dm: Any) -> bool:
     try:
         if not hasattr(dm, "txtfusion"):
@@ -108,7 +143,7 @@ def _parse_floats(text: Any) -> Any:
 
 
 PATCH_LOCK = threading.RLock()
-VERSION = "2.0.2"
+VERSION = "2.1.0"
 
 
 def _rms(value):
@@ -350,6 +385,29 @@ def _apply_adapter(p, unet, name, strength):
     return updated, f"Registered {count} model patches at {strength:.2f}"
 
 
+def _lora_choices():
+    names = {DEFAULT_REFUSAL_LORA}
+    try:
+        import networks
+        names.update(networks.available_networks)
+    except (ImportError, AttributeError):
+        pass
+    for folder in [getattr(shared.cmd_opts, "lora_dir", None), *list(getattr(shared.cmd_opts, "lora_dirs", []) or [])]:
+        if folder and os.path.isdir(folder):
+            for root, _, files in os.walk(folder):
+                names.update(os.path.splitext(f)[0] for f in files if f.lower().endswith((".safetensors", ".pt", ".ckpt")))
+    return sorted(names, key=str.casefold)
+
+
+def _selected_loras(value):
+    # Preserve old 15-argument calls and PNG infotext with a single plain name.
+    if isinstance(value, (tuple, list)):
+        values = value
+    else:
+        values = str(value or "").split(" | ")
+    return list(dict.fromkeys(str(v).strip() for v in values if str(v).strip()))
+
+
 MOIRE_NOTCH_KERNEL = np.asarray((-1, 6, -15, 20, -15, 6, -1), dtype=np.float32) / 64.0
 
 
@@ -409,11 +467,17 @@ class Krea2RebalanceScript(scripts.ScriptBuiltinUI):
             gr.HTML("<div class='krea2-hero'><span class='krea2-eyebrow'>PROMPT CONTROL</span>"
                     "<h3>More control. Less clutter.</h3>"
                     "<p>Choose a starting point, then fine-tune your strength.</p></div>")
-            with gr.Row():
+            with gr.Row(elem_classes=["krea2-presets"]):
                 gentle = gr.Button("Gentle", size="sm")
                 balanced = gr.Button("Balanced", variant="primary", size="sm")
                 strong = gr.Button("Strong", size="sm")
                 reset = gr.Button("Reset", size="sm")
+            method_enabled = gr.Checkbox(value=False, label="Enable checked bypasses")
+            method = gr.CheckboxGroup(choices=list(BYPASS_METHODS), value=[],
+                                     label="Bypass options (check one or more)", elem_classes=["krea2-method-options"])
+            method_strength = gr.Slider(0.0, 5.0, value=1.0, step=0.1, label="Method strength",
+                                       info="Start at 1. Higher values may alter appearance. No extra downloads.")
+            method_status = gr.Markdown("Checked bypasses combine their effects. Start with one; higher combined strength can distort appearance.")
             strength = gr.Slider(0.0, 3.0, value=0.15, step=0.05,
                                  label="Prompt strength", info="Start at 0.15. Raise it gradually if needed.")
             avoid_text = gr.Textbox(interactive=True, label="Avoid (optional)", placeholder="e.g. stripes, lettering, red background",
@@ -421,13 +485,16 @@ class Krea2RebalanceScript(scripts.ScriptBuiltinUI):
             summary = gr.Markdown("**Control level: 0.15×** · Correction limit: 0.05", elem_classes=["krea2-summary"])
 
             with gr.Accordion("Optional LoRA", open=False):
-                enable_refusal = gr.Checkbox(label="Apply LoRA", value=False,
+                enable_refusal = gr.Checkbox(label="Apply selected LoRAs", value=False,
                                              info="Diffusion-model adapter, including TextFusion. Use Forge prompt tags for text-encoder LoRAs.")
                 with gr.Column(visible=False) as lora_controls:
-                    lora_name = gr.Textbox(label="LoRA name", value=DEFAULT_REFUSAL_LORA,
-                                           info="Exact filename or registered alias. A matching Forge prompt adapter takes priority.")
+                    lora_name = gr.Dropdown(choices=_lora_choices(), multiselect=True, value=[DEFAULT_REFUSAL_LORA],
+                                             label="LoRAs (select one or more)", allow_custom_value=True,
+                                             info="Names are searchable. Strength below applies to each selected LoRA.")
+                    refresh_loras = gr.Button("Refresh LoRA names", size="sm")
+                    refresh_loras.click(lambda: gr.update(choices=_lora_choices()), inputs=[], outputs=[lora_name], queue=False)
                     refusal_strength = gr.Slider(0.0, 2.0, value=DEFAULT_REFUSAL_STRENGTH,
-                                                  step=0.05, label="LoRA strength")
+                                                  step=0.05, label="Selected LoRAs strength")
                     check_lora = gr.Button("Check LoRA", size="sm")
                     lora_status = gr.Markdown("Check that your adapter is available before generating.")
 
@@ -454,20 +521,30 @@ class Krea2RebalanceScript(scripts.ScriptBuiltinUI):
                 return f"**Control level: {effective:.2f}×** · Correction limit: {float(cap):.2f}"
 
             def check_adapter(name):
-                try:
-                    found = _find_lora_file(name)
-                except ValueError as exc:
-                    return str(exc)
-                if found:
-                    return "Found: <code>" + html.escape(os.path.basename(found)) + "</code>. Available. Patch registration is checked during generation."
-                return "LoRA not found. Check its filename and your configured LoRA folder."
-
+                selected = _selected_loras(name)
+                if not selected:
+                    return "Select at least one LoRA."
+                reports = []
+                for item in selected:
+                    try:
+                        found = _find_lora_file(item)
+                        reports.append(html.escape(item) + (": available" if found else ": not found"))
+                    except ValueError as exc:
+                        reports.append(html.escape(item) + ": " + html.escape(str(exc)))
+                return " · ".join(reports)
             for button, values in ((gentle, (0.15, "Standard", 0.05)),
                                    (balanced, (0.35, "Standard", 0.10)),
                                    (strong, (0.65, "Standard", 0.15))):
                 button.click(lambda v=values: (*v, describe(*v)), inputs=[],
                              outputs=[strength, power_mode, token_cap, summary], queue=False)
-            reset.click(lambda: (0.15, "Standard", TXTFUSION_TOKEN_REL_CAP, False, DEFAULT_REFUSAL_LORA, 1.0,
+            reset.click(lambda: (False, [], 1.0), inputs=[],
+                        outputs=[method_enabled, method, method_strength], queue=False)
+            def describe_method(on, choice, amount):
+                return (f"Selected: {', '.join(_selected_loras(choice)) or 'none'} at {float(amount):.2f} each. Registration is checked during generation."
+                        if on else "Selected method is off.")
+            for control in (method_enabled, method, method_strength):
+                control.change(describe_method, inputs=[method_enabled, method, method_strength], outputs=[method_status], queue=False)
+            reset.click(lambda: (0.15, "Standard", TXTFUSION_TOKEN_REL_CAP, False, [DEFAULT_REFUSAL_LORA], 1.0,
                                   False, NEGPIP_WEIGHTS_DEFAULT, 1.0, NEGPIP_TOKEN_CAP,
                                   describe(0.15, "Standard", TXTFUSION_TOKEN_REL_CAP), gr.update(visible=False), gr.update(visible=False), "", False,
                                   "Check that your adapter is available before generating."), inputs=[],
@@ -485,7 +562,7 @@ class Krea2RebalanceScript(scripts.ScriptBuiltinUI):
                                         info="Optional final-image filter; works independently of Krea 2 controls.")
             moire_strength = gr.Slider(0.0, 1.0, value=0.35, step=0.05, label="Cleanup strength")
 
-        for comp in (enable, enable_refusal, lora_name, strength, power_mode, refusal_strength, token_cap, enable_negpip, negpip_weights, negpip_strength, negpip_cap, avoid_text, use_cache, moire_enabled, moire_strength):
+        for comp in (enable, enable_refusal, lora_name, strength, power_mode, refusal_strength, token_cap, enable_negpip, negpip_weights, negpip_strength, negpip_cap, avoid_text, use_cache, moire_enabled, moire_strength, method_enabled, method, method_strength):
             comp.do_not_save_to_config = True
 
         self.infotext_fields = [
@@ -495,7 +572,7 @@ class Krea2RebalanceScript(scripts.ScriptBuiltinUI):
             (strength, "Krea2 Rebalance Strength"),
             (power_mode, "Krea2 Rebalance Power Mode"),
             (enable_refusal, "Krea2 Refusal LoRA"),
-            (lora_name, "Krea2 Refusal LoRA Name"),
+            (lora_name, lambda params: _selected_loras(params["Krea2 Refusal LoRA Name"]) if "Krea2 Refusal LoRA Name" in params else None),
             (refusal_strength, "Krea2 Refusal LoRA Strength"),
             (token_cap, "Krea2 Rebalance Adherence Cap"),
             (enable_negpip, "Krea2 NegPiP"),
@@ -504,9 +581,12 @@ class Krea2RebalanceScript(scripts.ScriptBuiltinUI):
             (negpip_cap, "Krea2 NegPiP Cap"),
             (moire_enabled, "Qwen Moire Cleanup"),
             (moire_strength, "Qwen Moire Cleanup Strength"),
+            (method_enabled, "Krea2 Method Enabled"),
+            (method, lambda params: _selected_loras(params["Krea2 Method"]) if "Krea2 Method" in params else None),
+            (method_strength, "Krea2 Method Strength"),
         ]
 
-        return [enable, enable_refusal, lora_name, strength, power_mode, refusal_strength, token_cap, enable_negpip, negpip_weights, negpip_strength, negpip_cap, avoid_text, use_cache, moire_enabled, moire_strength]
+        return [enable, enable_refusal, lora_name, strength, power_mode, refusal_strength, token_cap, enable_negpip, negpip_weights, negpip_strength, negpip_cap, avoid_text, use_cache, moire_enabled, moire_strength, method_enabled, method, method_strength]
 
     def process(self, p, *args, **kwargs):
         # State belongs to the job, never the persistent Gradio Script instance.
@@ -524,6 +604,10 @@ class Krea2RebalanceScript(scripts.ScriptBuiltinUI):
                                      negpip_weights=NEGPIP_WEIGHTS_DEFAULT, negpip_strength=1.0,
                                      negpip_cap=NEGPIP_TOKEN_CAP, avoid_text="", use_cache=False,
                                      *args, **kwargs):
+        # New controls follow the existing moire positions (13/14).
+        selected_on = bool(args[2]) if len(args) >= 3 else False
+        selected_methods = _selected_loras(args[3]) if len(args) >= 4 else []
+        selected_amount = _bounded_float(args[4], 1.0, 0., 5.) if len(args) >= 5 else 1.0
         if not enable:
             return
         unet = p.sd_model.forge_objects.unet
@@ -552,14 +636,43 @@ class Krea2RebalanceScript(scripts.ScriptBuiltinUI):
         meta = p.extra_generation_params
         status = "Off"
         if enable_refusal:
-            try:
-                unet, status = _apply_adapter(p, unet, lora_name, refusal_strength)
-            except Exception as exc:
-                status = f"Unavailable: {exc}"
-            if not status.startswith(("Registered", "Managed", "Off")):
-                gr.Warning("Krea2 LoRA: " + status)
+            reports = []
+            for name in _selected_loras(lora_name):
+                try:
+                    unet, report = _apply_adapter(p, unet, name, refusal_strength)
+                except Exception as exc:
+                    report = f"Unavailable: {exc}"
+                reports.append(f"{name}: {report}")
+                if not report.startswith(("Registered", "Managed", "Off")):
+                    gr.Warning("Krea2 LoRA: " + name + ": " + report)
+            status = " | ".join(reports) if reports else "Off (no LoRAs selected)"
         meta["Krea2 Adapter Status"] = status
+        meta["Krea2 Refusal LoRA Name"] = " | ".join(_selected_loras(lora_name))
         print("[Krea2 Rebalance] Adapter: " + status)
+        method_status = "Off"
+        if selected_on:
+            enable_negpip = False
+            invalid = [name for name in selected_methods if name not in BYPASS_METHODS]
+            enhancer_selected = BYPASS_METHODS[-1] in selected_methods
+            strength = min(strength * selected_amount, 3.0) if enhancer_selected else 0.0
+            if invalid:
+                strength = 0.0
+                method_status = "Skipped: unknown method"
+                gr.Warning("Krea2: unknown selected bypass; no selected bypass was applied.")
+            elif not selected_methods:
+                method_status = "Off (no methods checked)"
+            else:
+                try:
+                    unet, method_status = _apply_bypass_methods(unet, selected_methods, selected_amount)
+                    if enhancer_selected:
+                        method_status += " | bounded enhancer" if strength > 0 else " | enhancer off (zero strength)"
+                except Exception as exc:
+                    # Do not silently apply the enhancer after a bypass conflict.
+                    strength = 0.0
+                    method_status = "Skipped: " + str(exc)
+                    gr.Warning("Krea2 method: " + str(exc))
+        meta.update({"Krea2 Method Enabled": selected_on, "Krea2 Method": " | ".join(selected_methods),
+                     "Krea2 Method Strength": selected_amount, "Krea2 Method Status": method_status})
         negpip_cfg = None
         if enable_negpip and _bounded_float(negpip_strength, 1, 0, 3) > 0:
             weights = _parse_floats(negpip_weights)
